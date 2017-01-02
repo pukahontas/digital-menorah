@@ -1,22 +1,29 @@
 #include <RTClib.h>
 #include <TimeLib.h>
 
-// the setup function runs once when you press reset or power the board
+// Pinout constants
+// 3-to-8 Demux select pins
 #define S1 10
 #define S2 11
 #define S3 12
+// Color enable pins (high is on)
 #define RED A1
 #define GREEN  A3
 #define BLUE A5
+// Shamash color pins (directly controlled)
 #define SHAMASHR A2
 #define SHAMASHG A4
 #define SHAMASHB 13
 
-void setup() {  
+// Start of the first night of hanukkah
+// Format is (YYYY, MM, DD, hh, mm, ss)
+const DateTime HANUKKAH_START = DateTime(2016, 12, 24, 16, 22, 00);
+
+void setup() {
   pinMode(S1, OUTPUT);
   pinMode(S2, OUTPUT);
   pinMode(S3, OUTPUT);
-  
+
   pinMode(RED, OUTPUT);
   pinMode(GREEN, OUTPUT);
   pinMode(BLUE, OUTPUT);
@@ -30,22 +37,22 @@ void setup() {
   digitalWrite(SHAMASHB, HIGH);
 
   //Set system time to time sketch was compiled
-  DateTime t = DateTime(F(__DATE__), F(__TIME__)); 
+  DateTime t = DateTime(F(__DATE__), F(__TIME__));
   setTime(t.hour(), t.minute(), t.second(), t.day(), t.month(), t.year());
-  setCandle(0);  
+  setCandle(0);
 }
 
 int v = 0;
+int prevDay = -1;
 void loop() {
-  int days = (now() - DateTime(2016, 12, 24, 16, 22, 00).unixtime()) / 86400;
-  Serial.print(year()); Serial.print("-");
-  Serial.print(month()); Serial.print("-");
-  Serial.print(day()); Serial.print(" ");
-  Serial.print(hour()); Serial.print(":");
-  Serial.print(minute()); Serial.print(":");
-  Serial.print(second()); Serial.print(", ");
-  Serial.print("Day "); 
-  Serial.println(days + 1);
+  int days = (now() - HANUKKAH_START.unixtime()) / 86400;
+  if (days != prevDay) {
+    prevDay = days;
+    Serial.println("Barukh atah Adonai");
+    Serial.println("Eloheinu melekh ha'olam");
+    Serial.println("asher kid'shanu b'mitzvotav");
+    Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
+  }
 
   if (days < 0 || days > 7) {
     off();
@@ -54,7 +61,7 @@ void loop() {
       v = 0;
 
     off();
-    setCandle(v);    
+    setCandle(v);
     if (v <= days)
       flicker();
 
