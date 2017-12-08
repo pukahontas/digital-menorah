@@ -64,6 +64,14 @@ void setup() {
       // Set the RTC to the date & time this sketch was compiled
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     }
+
+    // Sets the RTC as the system time sync provider
+    setSyncProvider(getRTCTime);
+    
+    if(timeStatus()!= timeSet) 
+      Serial.println("Unable to sync with the RTC");
+    else
+      Serial.println("RTC has set the system time");  
   } else {
     //Set system time to time sketch was compiled
     DateTime t = DateTime(F(__DATE__), F(__TIME__));
@@ -75,6 +83,9 @@ void setup() {
     if (daysBetween(HANUKKAH_START[hanukkahStartIndex], getTime()) < 8)
       break;       
   }
+
+  // Perform power on self test
+  post();
   
   setCandle(0);
 }
@@ -113,10 +124,40 @@ void loop() {
 
   }
 
-  // Flicker the shamash
-  digitalWrite(SHAMASHR, random(100) < 40 ? LOW : HIGH);
-  digitalWrite(SHAMASHG, random(100) < 20 ? LOW : HIGH);
+  flickerShamash();
 }
+
+// Power On Self Test
+void post() {    
+  // Light all candles in order
+  for (int n = 0; n <= 8; n++) { // Number of candles to light
+    time_t timing = getUnixTime();
+    while(getUnixTime() - timing < 1) { // Loop to idle for a second
+      flickerShamash();
+      for (int i = 0; i < 8; i++) {
+        off();
+        setCandle(i);
+        i < n ? flicker() : off();
+      }
+    }
+  }
+
+  // Find number of days until the *next* hannukah and write it out in binary
+  // Shamash is MSB
+  int days = daysBetween(HANUKKAH_START[hanukkahStartIndex], getTime());
+  time_t timing = getUnixTime();
+  while(getUnixTime() - timing < 8) {
+    int d = days < 0 ? -days : days;
+    offShamash();
+    for (int i = 0; i < 8; i++) {
+      off();
+      setCandle(i);
+      d & 1 ? flicker() : off();
+      d = d >> 1;
+    }
+    d & 1 ? flickerShamash() : offShamash();
+  }
+}  
 
 // Select the current "candle" to change the color of.
 void setCandle (int c) {
@@ -133,6 +174,13 @@ void flicker () {
   //digitalWrite(BLUE, random(100) < 10 ? HIGH : LOW);
 }
 
+void flickerShamash () {
+  // Flicker the shamash
+  digitalWrite(SHAMASHR, random(100) < 40 ? LOW : HIGH);
+  digitalWrite(SHAMASHG, random(100) < 20 ? LOW : HIGH);
+  //digitalWrite(SHAMASHB, random(100) < 10 ? HIGH : LOW);
+}
+
 // Turn current candle off
 void off () {
   digitalWrite(RED, LOW);
@@ -140,14 +188,25 @@ void off () {
   digitalWrite(BLUE, LOW);
 }
 
-// Get the current time
+void offShamash () {
+  digitalWrite(SHAMASHR, LOW);
+  digitalWrite(SHAMASHG, LOW);
+  digitalWrite(SHAMASHB, LOW);
+}
+
+// Get the current time in seconds from UTC epoch
 // If the RTC is available, use its current time
 // Otherwise, use an estimate from the system clock.
 DateTime getTime () {
-  if (RTCenabled)
-    return rtc.now();
-  else
     return now();
+}
+
+time_t getRTCTime () {
+  return rtc.now().unixtime();
+}
+
+time_t getUnixTime () {
+  return getTime().unixtime();
 }
 
 // Calculate the days from the first date to the other
