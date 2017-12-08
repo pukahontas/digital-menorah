@@ -25,16 +25,16 @@ int RTCenabled = false;
 // Format is (YYYY, MM, DD, hh, mm, ss)
 #define HANUKKAH_START_LENGTH 10
 const DateTime HANUKKAH_START[] = {
-   DateTime(2017, 12, 12, 16, 17, 00), // 2017
-   DateTime(2018, 12, 2, 16, 19, 00),  // 2018
-   DateTime(2019, 12, 22, 16, 21, 00), // 2019
-   DateTime(2020, 12, 10, 16, 17, 00), // 2020
-   DateTime(2021, 11, 28, 16, 20, 00), // 2021
-   DateTime(2022, 12, 18, 16, 19, 00), // 2022
-   DateTime(2023, 12, 8, 16, 17, 00),  // 2023
-   DateTime(2024, 12, 25, 16, 23, 00), // 2024
-   DateTime(2025, 12, 14, 16, 18, 00), // 2025
-   DateTime(2026, 12, 4, 16, 18, 00)   // 2026
+   DateTime(2017, 12, 12, 16, 17, 00), // December 12, 2017 4:17pm
+   DateTime(2018, 12, 2, 16, 19, 00),  // December  2, 2018 4:19pm
+   DateTime(2019, 12, 22, 16, 21, 00), // December 22, 2019 4:21pm
+   DateTime(2020, 12, 10, 16, 17, 00), // December 10, 2020 4:17pm
+   DateTime(2021, 11, 28, 16, 20, 00), // November 28, 2021 4:20pm
+   DateTime(2022, 12, 18, 16, 19, 00), // December 18, 2022 4:19pm
+   DateTime(2023, 12, 8, 16, 17, 00),  // December  8, 2023 4:17pm
+   DateTime(2024, 12, 25, 16, 23, 00), // December 25, 2024 4:23pm
+   DateTime(2025, 12, 14, 16, 18, 00), // December 14, 2025 4:18pm
+   DateTime(2026, 12, 4, 16, 18, 00)   // December  4, 2026 4:18pm
 };
 int hanukkahStartIndex = 0; 
 
@@ -169,15 +169,19 @@ void setCandle (int c) {
 // Flicker the current candle
 // (i.e, probablistically set the candle to off or on [in a reddish-yellow color])
 void flicker () {
-  digitalWrite(RED, random(100) < 60 ? HIGH : LOW);
-  digitalWrite(GREEN, random(100) < 40 ? HIGH : LOW);
+  boolean red = random(100) < 40;
+  boolean yellow = random(100) < 60;
+  digitalWrite(RED, red || yellow ? HIGH : LOW);
+  digitalWrite(GREEN, yellow ? HIGH : LOW);
   //digitalWrite(BLUE, random(100) < 10 ? HIGH : LOW);
 }
 
 void flickerShamash () {
   // Flicker the shamash
-  digitalWrite(SHAMASHR, random(100) < 40 ? LOW : HIGH);
-  digitalWrite(SHAMASHG, random(100) < 20 ? LOW : HIGH);
+  boolean red = random(100) < 20;
+  boolean yellow = random(100) < 40;
+  digitalWrite(SHAMASHR, red || yellow ? LOW : HIGH);
+  digitalWrite(SHAMASHG, yellow ? LOW : HIGH);
   //digitalWrite(SHAMASHB, random(100) < 10 ? HIGH : LOW);
 }
 
