@@ -1,9 +1,18 @@
-#include <RTClib.h>
+//#include <RTClib.h>
 #include <TimeLib.h>
 #include <Wire.h>
 #include "uTimerLib.h"
+#include <Adafruit_GPS.h>
+#include "jdate.h"
 
-RTC_DS1307 rtc;
+// Uses Hebrew calendar computation code by Edward Reingold and Nachum Dershowitz from https://people.sc.fsu.edu/~jburkardt/cpp_src/calendar_rd/calendar_rd.cpp
+#include "calendar_rd.h"
+
+// what's the name of the hardware serial port?
+#define GPSSerial Serial1
+
+// Connect to the GPS on the hardware port
+Adafruit_GPS GPS(&GPSSerial);
 
 // Pinout constants
 // 3-to-8 Demux select pins
@@ -12,7 +21,7 @@ RTC_DS1307 rtc;
 #define S3 12
 // Color enable pins (high is on)
 #define RED A1
-#define GREEN  A3
+#define GREEN A3
 #define BLUE A5
 // Shamash color pins (directly controlled)
 #define SHAMASHR A2
@@ -20,31 +29,21 @@ RTC_DS1307 rtc;
 #define SHAMASHB 13
 
 // Define the bytes for if the candles and shamash should be turned on
-// These will be set during interrupts, so they are volitile
+// These will be set during interrupts, so they are volatile
 volatile boolean shamashOn = false;
-volatile int candlesOn = 0x00;
+volatile char candlesOn = 0x00;
+volatile int dayOfHanukkah = 0;
 
-// Boolean, is the RTC available for accurate timekeeping
-int RTCenabled = false;
-
-// Start of the first night of hanukkah
-// Format is (YYYY, MM, DD, hh, mm, ss)
-#define HANUKKAH_START_LENGTH 10
-const DateTime HANUKKAH_START[] = {
-   DateTime(2017, 12, 12, 16, 17, 00), // December 12, 2017 4:17pm
-   DateTime(2018, 12, 2, 16, 19, 00),  // December  2, 2018 4:19pm
-   DateTime(2019, 12, 22, 16, 21, 00), // December 22, 2019 4:21pm
-   DateTime(2020, 12, 10, 16, 17, 00), // December 10, 2020 4:17pm
-   DateTime(2021, 11, 28, 16, 20, 00), // November 28, 2021 4:20pm
-   DateTime(2022, 12, 18, 16, 19, 00), // December 18, 2022 4:19pm
-   DateTime(2023, 12, 8, 16, 17, 00),  // December  8, 2023 4:17pm
-   DateTime(2024, 12, 25, 16, 23, 00), // December 25, 2024 4:23pm
-   DateTime(2025, 12, 14, 16, 18, 00), // December 14, 2025 4:18pm
-   DateTime(2026, 12, 4, 16, 18, 00)   // December  4, 2026 4:18pm
-};
-int hanukkahStartIndex = 0; 
+// Set global variables for holding GPS data
+volatile boolean validTime = false;     // Has the GPS received a valid time solution yet?
+volatile boolean validLocation = true;  // Has the GPS computed a valid location yet?
+volatile int nighttime = -1;             // 0 = day, 1 = night, other = unknown
+volatile double lat = 47.606209;        // Latitude in fractional degrees, default to Seattle
+volatile double lng = -122.332069;      // Longitude in fractional degrees, default to Seattle
 
 void setup() {
+  Serial.begin(115200);  //Set serial baud rate
+
   // Setup pins
   pinMode(S1, OUTPUT);
   pinMode(S2, OUTPUT);
@@ -54,111 +53,145 @@ void setup() {
   pinMode(GREEN, OUTPUT);
   pinMode(BLUE, OUTPUT);
 
-  pinMode (SHAMASHR, OUTPUT);
-  pinMode (SHAMASHG, OUTPUT);
-  pinMode (SHAMASHB, OUTPUT);
+  pinMode(SHAMASHR, OUTPUT);
+  pinMode(SHAMASHG, OUTPUT);
+  pinMode(SHAMASHB, OUTPUT);
 
   digitalWrite(SHAMASHR, HIGH);
   digitalWrite(SHAMASHG, HIGH);
   digitalWrite(SHAMASHB, HIGH);
 
-  
-  if (rtc.begin()) {
-    RTCenabled = true;
-    
-    if (!rtc.isrunning()) {
-      // Set the RTC to the date & time this sketch was compiled
-      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    }
+  /*** Setup GPS Module ***/
+  // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
+  GPS.begin(9600);
+  // Turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ);  // 10 second update time
 
-    // Sets the RTC as the system time sync provider
-    setSyncProvider(getRTCTime);
-    
-    if(timeStatus()!= timeSet) 
-      Serial.println("Unable to sync with the RTC");
-    else
-      Serial.println("RTC has set the system time");  
-  } else {
-    //Set system time to time sketch was compiled
-    DateTime t = DateTime(F(__DATE__), F(__TIME__));
-    setTime(t.hour(), t.minute(), t.second(), t.day(), t.month(), t.year());
-  }
-
-  // Set up to start at the most recent year
-  for (hanukkahStartIndex = 0; hanukkahStartIndex < HANUKKAH_START_LENGTH; hanukkahStartIndex++) {
-    if (daysBetween(HANUKKAH_START[hanukkahStartIndex], getTime()) < 8)
-      break;       
-  }
-
-  // Start power on self test interrupt chain
-  TimerLib.setInterval_s(post, 1);
+  post();
 }
 
 void loop() {
   // Switch to the next candle (roll back to 0 if we pass 7)
-  for (int i = 1, n = 0; n < 8; i *= 2, n++) {
-    off();
+  for (char i = 1, n = 0; n < 8; i *= 2, n++) {
     setCandle(n);
-    i & candlesOn ? flicker() : off();
-  }
-  shamashOn ? flickerShamash() : offShamash();
-}
+    if (i & candlesOn) flicker();
 
+    delay(2);
+    off();
+  }
+
+  if (shamashOn)
+    flickerShamash();
+  delay(2);
+  offShamash();
+
+  GPS.read();
+}
 volatile int prevDay = -1;
 void mainInterrupt() {
+  off();
   // The main interrupt handler, runs fairly frequently to check if the day has changed
   // or other reasons why the displayed candles should change
-  
-  // Find days since Hanukkah started
-  int days = daysBetween(HANUKKAH_START[hanukkahStartIndex], getTime());
 
-  if (days < 0)
+  // Check GPS for current time and location, and store it in global variables
+  readGPS();
+
+  if (!validTime || !validLocation)
+    return;
+
+  if (dayOfHanukkah < 0)
+    candlesOn = -dayOfHanukkah;
+  else if (dayOfHanukkah > 7) {
     candlesOn = 0;
-  else if (days > 7) {
-    candlesOn = 0;
-    // After the eight day, switch to the next year
-    hanukkahStartIndex++;
-  } else {
-    // On a new day, say a little prayer
-    if (days != prevDay) {
-      prevDay = days;
-      Serial.println("Barukh atah Adonai");
-      Serial.println("Eloheinu melekh ha'olam");
-      Serial.println("asher kid'shanu b'mitzvotav");
-      Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
-    }
-    candlesOn = (2 << days) - 1; // Set the least significant bits on
   }
+  // On a new day, say a little prayer
+  if (dayOfHanukkah != prevDay) {
+    prevDay = dayOfHanukkah;
+    Serial.println("Barukh atah Adonai");
+    Serial.println("Eloheinu melekh ha'olam");
+    Serial.println("asher kid'shanu b'mitzvotav");
+    Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
+  }
+}
+
+void readGPS() {
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived()) {
+    Serial.println(GPS.lastNMEA());
+    if (!GPS.parse(GPS.lastNMEA()))
+      return;  // we can fail to parse a sentence in which case we should just wait for the next one
+
+    if (GPS.year < 22 || GPS.year >= 80) {  // If the GPS time is outside the range 2022 to 2080, assume we don't have the right time
+      validTime = false;
+      return;
+    }
+
+    // GPS time appears to be valid. Set the system time to GPS time.
+    validTime = true;
+    float s = GPS.seconds + GPS.milliseconds / 1000. + GPS.secondsSinceTime();  // Offset the time based on how long it's been since the message was received.
+    setTime(GPS.hour, GPS.minute, s, GPS.day, GPS.month, GPS.year + 2000);
+
+    if (GPS.fix) {
+      lat = GPS.latitudeDegrees;
+      lng = GPS.longitudeDegrees;
+      Serial.print(lat);
+      Serial.print(" latitude ");
+      Serial.print(lng);
+      Serial.println(" longitude");
+      validLocation = true;
+      // Assume that once we have a single fix, that the location stays consistent during the duration.
+      // We don't need to invalidate the solution if we ever lose the fix.
+    }
+  }
+
+  boolean getNight = isNight(lat, lng);
+  if (nighttime != getNight) {  // Nighttime status has changed, recalculate number of days
+    // Calculate if the local date is different from the GMT date
+    // Add the "longitude time" to the current GMT time and see if it's less than 0 (before midnight)
+    double offsetDayFrac = hour() / 24. + minute() / 24 / 60 + lng / 360.; // Local day fraction
+    int dayOffset = floor(offsetDayFrac); // Set the local day to be -1 if the local time is a day behind GMT, +1 if it is a day ahead of GMT or 0 if it is that same 
+    double localDayFrac = offsetDayFrac - dayOffset; // Find the day fraction in local time in the range (0..1)
+
+    // Hebrew date assumes it's before sunset, add a day if it's nighttime and after noon (before noon nighttime means pre-dawn)
+    HebrewDate currentHebrewDate = HebrewDate(GregorianDate(month(), day(), year()) + dayOffset) + (getNight && localDayFrac > .5);
+
+    dayOfHanukkah = currentHebrewDate - HebrewDate(9, 25, currentHebrewDate.GetYear()) ;
+
+    Serial.println(dayOffset); Serial.println(localDayFrac);Serial.println(getNight);
+    Serial.print(currentHebrewDate.GetDay());Serial.print("/");Serial.print(currentHebrewDate.GetMonth());Serial.print("/");Serial.println(currentHebrewDate.GetYear());
+    Serial.print(dayOfHanukkah);
+    Serial.println(" day of Hanukkah");
+  }
+  nighttime = getNight;
 }
 
 void post() {
   // Light all candles in order
   candlesOn = candlesOn * 2 + 1;
-  if (candlesOn > 255)
+
+  if (candlesOn == 255)  // The char has fully filled
     TimerLib.setTimeout_s(post2, 1);
+  else
+    TimerLib.setTimeout_s(post, 1);
 }
 
 // Power On Self Test
 void post2() {
-  // Find number of days until the *next* hannukah and write it out in binary
+  // Find number of days until the *next* hanukkah and write it out in binary
   // Shamash is MSB
-  int days = daysBetween(getTime(), HANUKKAH_START[hanukkahStartIndex]);
-  Serial.print(days); Serial.println(" days till Hanukkah");
-  
-  if (days > 0) {
-    candlesOn = days & 0xFF;
-    shamashOn = days > 0xFF;
-    TimerLib.setTimeout_s(post3, 4); //wait 4 seconds
+  if (false) {
+    TimerLib.setTimeout_s(post3, 4);  // wait 4 seconds
   } else
-    post3(); // Go immediately
+    post3();  // Go immediately
 }
 
-void post3 () {
-  TimerLib.setInterval_s(mainInterrupt, 1); // Start main interrupt function
+void post3() {
+  TimerLib.setInterval_s(mainInterrupt, 2);  // Start main interrupt function
 }
 
 // Select the current "candle" to change the color of.
-void setCandle (int c) {
+void setCandle(int c) {
   digitalWrite(S1, c & 1 ? HIGH : LOW);
   digitalWrite(S2, c & 2 ? HIGH : LOW);
   digitalWrite(S3, c & 4 ? HIGH : LOW);
@@ -166,56 +199,39 @@ void setCandle (int c) {
 
 // Flicker the current candle
 // (i.e, probablistically set the candle to off or on [in a reddish-yellow color])
-void flicker () {
-  boolean red = random(100) < 40;
-  boolean yellow = random(100) < 60;
-  digitalWrite(RED, red || yellow ? HIGH : LOW);
-  digitalWrite(GREEN, yellow ? HIGH : LOW);
-  digitalWrite(BLUE, random(100) < 0 ? HIGH : LOW);
+void flicker() {
+  flicker(false);
 }
+void flickerShamash() {
+  flicker(true);
+}
+void flicker(boolean shamash) {
+  int red = random(128);
+  int yellow = random(255) + 64;
+  int blue = random(40);
 
-void flickerShamash () {
-  // Flicker the shamash
-  boolean red = random(100) < 20;
-  boolean yellow = random(100) < 40;
-  digitalWrite(SHAMASHR, red || yellow ? LOW : HIGH);
-  digitalWrite(SHAMASHG, yellow ? LOW : HIGH);
-  digitalWrite(SHAMASHB, random(100) < 0 ? HIGH : LOW);
+  analogWrite(shamash ? SHAMASHR : RED, min(yellow, 255));
+  analogWrite(shamash ? SHAMASHG : GREEN, min(yellow, 255));
+  analogWrite(shamash ? SHAMASHB : BLUE, blue);
 }
 
 // Turn current candle off
-void off () {
+void off() {
+  pinMode(RED, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(BLUE, OUTPUT);
+
   digitalWrite(RED, LOW);
   digitalWrite(GREEN, LOW);
   digitalWrite(BLUE, LOW);
 }
 
-void offShamash () {
+void offShamash() {
+  pinMode(SHAMASHR, OUTPUT);
+  pinMode(SHAMASHG, OUTPUT);
+  pinMode(SHAMASHB, OUTPUT);
+
   digitalWrite(SHAMASHR, LOW);
   digitalWrite(SHAMASHG, LOW);
   digitalWrite(SHAMASHB, LOW);
-}
-
-// Get the current time in seconds from UTC epoch
-// If the RTC is available, use its current time
-// Otherwise, use an estimate from the system clock.
-DateTime getTime () {
-    return now();
-}
-
-time_t getRTCTime () {
-  return rtc.now().unixtime();
-}
-
-time_t getUnixTime () {
-  return getTime().unixtime();
-}
-
-// Calculate the days from the first date to the other
-// If the second date happens before the first, the result will be negative.
-int daysBetween (DateTime a, DateTime b) {
-  // Declare helper variables to convert to signed longs
-  long aL = a.unixtime();
-  long bL = b.unixtime();
-  return (bL - aL) / 86400 - (aL > bL);
 }
