@@ -1,6 +1,9 @@
 #include <TimeLib.h>
 
-const double HORIZON_ANGLE = 90.833; //The angle of the sun from the zenith when the sun is said to have set or risen, in degreestgggggggggggggggggggggggggggggggggggggggggg
+// Uses Hebrew calendar computation code by Edward Reingold and Nachum Dershowitz from https://people.sc.fsu.edu/~jburkardt/cpp_src/calendar_rd/calendar_rd.cpp
+#include "calendar_rd.h"
+
+const double HORIZON_ANGLE = 90.833; //The angle of the sun from the zenith when the sun is said to have set or risen, in degrees
 
 bool isNight(double lat, double lng);
 bool isNight(int year, int month, int day, int hour, int minute, int second, double lat, double lng);
@@ -42,14 +45,29 @@ bool isNight(int year, int month, int day, int hour, int minute, int second, dou
   double zenithAngle = acos(sin(latRAD)*sin(decl) - cos(latRAD)*cos(decl)*cos(trueSolarTime/4*PI/180))*180/PI; //local angle from zenith to sun, in degrees
 
   double sunrise = 720 - 4 * (lng + hourAngleHorizon) - eqTime; // Time of sunrise, in minutes past midnight UTC of the local day
-  double sunset = 720 - 4 * (lng - hourAngleHorizon) - eqTime; // TIme of sunset, in minutes past midnight UTC of the local day
-
-  Serial.print(day); Serial.print("/"); Serial.print(month); Serial.print("/"); Serial.print(year);Serial.print(" ");
-  Serial.print(hour); Serial.print(":"); Serial.print(minute); Serial.print(":"); Serial.print(second);Serial.print(", ");
-  Serial.print(lat); Serial.print(" lat "); Serial.print(lng); Serial.print(" long");
-  Serial.print(", sunset at "); Serial.print((int)(sunset / 60)); Serial.print(":"); Serial.print(((int)sunset) % 60);
-  Serial.print(", sunrise at "); Serial.print((int)(sunrise / 60)); Serial.print(":"); Serial.println(((int)sunrise) % 60);
-  Serial.print("Solar zenith angle: "); Serial.println(zenithAngle);
+  double sunset = 720 - 4 * (lng - hourAngleHorizon) - eqTime; // Time of sunset, in minutes past midnight UTC of the local day
 
   return zenithAngle > HORIZON_ANGLE; // If the sun is past the horizon, it is nighttime
 }
+
+HebrewDate currentHebrewDate(double lat, double lng) {
+  // Calculate if the local date is different from the GMT date
+  // Add the "longitude time" to the current GMT time and see if it's less than 0 (before midnight)
+  double offsetDayFrac = hour() / 24. + minute() / 24 / 60 + lng / 360.;  // Local day fraction
+  int dayOffset = floor(offsetDayFrac);                                   // Set the local day to be -1 if the local time is a day behind GMT, +1 if it is a day ahead of GMT or 0 if it is that same
+  double localDayFrac = offsetDayFrac - dayOffset;                        // Find the day fraction in local time in the range (0..1)
+
+  // Hebrew date assumes it's before sunset, add a day if it's nighttime and after noon (before noon nighttime means pre-dawn)
+  return HebrewDate(GregorianDate(month(), day(), year()) + dayOffset) + (isNight(lat, lng) && localDayFrac > .5);
+}
+
+int dayOfHanukkah (double lat, double lng) {
+  HebrewDate hDate = currentHebrewDate(lat, lng);
+  return hDate - HebrewDate(9, 25, hDate.GetYear());
+}
+
+String displayHebrewDate (HebrewDate hDate) {
+  return String(hDate.GetDay()) + " / " + String(hDate.GetMonth()) + " / " + String(hDate.GetYear());
+}
+
+
