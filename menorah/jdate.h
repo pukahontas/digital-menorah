@@ -6,14 +6,26 @@
 const double HORIZON_ANGLE = 90.833; //The angle of the sun from the zenith when the sun is said to have set or risen, in degrees
 
 bool isNight(double lat, double lng);
+bool isNight(double lat, double lng, double &sunrise, double &sunset);
 bool isNight(int year, int month, int day, int hour, int minute, int second, double lat, double lng);
+bool isNight(int year, int month, int day, int hour, int minute, int second, double lat, double lng, double &sunrise, double &sunset);
 
 bool isNight(double lat, double lng) {
   // Uses the current system time
   return isNight(year(), month(), day(), hour(), minute(), second(), lat, lng);
 }
 
+bool isNight(double lat, double lng, double &sunrise, double &sunset) {
+  // Uses the current system time
+  return isNight(year(), month(), day(), hour(), minute(), second(), lat, lng, sunrise, sunset);
+}
+
 bool isNight(int year, int month, int day, int hour, int minute, int second, double lat, double lng) {
+  double a, b; // Dummy variables
+  return isNight(year, month, day, hour, minute, second, lat, lng, a, b);
+}
+
+bool isNight(int year, int month, int day, int hour, int minute, int second, double lat, double lng, double &sunrise, double &sunset) {
   // Calculate sunrise/sunset from tiem equations
   // https://gml.noaa.gov/grad/solcalc/solareqns.PDF
   
@@ -44,8 +56,8 @@ bool isNight(int year, int month, int day, int hour, int minute, int second, dou
   double hourAngleHorizon = acos(cos(HORIZON_ANGLE*PI/180)/cos(latRAD)/cos(decl) - tan(latRAD)*tan(decl))*180/PI; // solar hour angle at the horizon, in degrees
   double zenithAngle = acos(sin(latRAD)*sin(decl) - cos(latRAD)*cos(decl)*cos(trueSolarTime/4*PI/180))*180/PI; //local angle from zenith to sun, in degrees
 
-  double sunrise = 720 - 4 * (lng + hourAngleHorizon) - eqTime; // Time of sunrise, in minutes past midnight UTC of the local day
-  double sunset = 720 - 4 * (lng - hourAngleHorizon) - eqTime; // Time of sunset, in minutes past midnight UTC of the local day
+  sunrise = 720 - 4 * (lng + hourAngleHorizon) - eqTime; // Time of sunrise, in minutes past midnight UTC of the local day
+  sunset = 720 - 4 * (lng - hourAngleHorizon) - eqTime; // Time of sunset, in minutes past midnight UTC of the local day
 
   return zenithAngle > HORIZON_ANGLE; // If the sun is past the horizon, it is nighttime
 }
@@ -63,7 +75,10 @@ HebrewDate currentHebrewDate(double lat, double lng) {
 
 int dayOfHanukkah (double lat, double lng) {
   HebrewDate hDate = currentHebrewDate(lat, lng);
-  return hDate - HebrewDate(9, 25, hDate.GetYear());
+  int dayOfHanukkah = hDate - HebrewDate(9, 25, hDate.GetYear());
+  if (dayOfHanukkah > 8)
+    dayOfHanukkah = hDate - HebrewDate(9, 25, hDate.GetYear() + 1);
+  return dayOfHanukkah;
 }
 
 String displayHebrewDate (HebrewDate hDate) {
