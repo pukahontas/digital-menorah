@@ -1,4 +1,4 @@
-#include "uTimerLib.h"
+#include "interrupt.h"
 #include <Adafruit_GPS.h>
 #include "jdate.h"
 #include "color.h"
@@ -10,14 +10,14 @@
 #define S3 A3
 
 // Color enable pins (high is on)
-#define RED 9
-#define GREEN 6
-#define BLUE 5
+const int RED = 9;
+const int GREEN = 6;
+const int BLUE = 5;
 
-// Shamash color pins (directly controlled)
-#define SHAMASHR 12
-#define SHAMASHG 11
-#define SHAMASHB 10
+// Shamash color pins (directly controlled, low is on)
+const int SHAMASHR = 12;
+const int SHAMASHG = 11;
+const int SHAMASHB = 10;
 
 // LED for showing fix
 #define FIX_LED 13
@@ -26,13 +26,15 @@
 // These will be set during interrupts, so they are volatile
 bool shamashOn = true;
 char candlesOn = 0xAA;
+Color* candleColors[9] = {};  // Array holding the candle colors.
+
 volatile char activeCandle = 0;  // Index of active candle from 0 to 7
 
 // Set global variables for holding GPS data
 bool validTime = false;     // Has the GPS received a valid time solution yet?
 bool validLocation = true;  // Has the GPS computed a valid location yet?
-double lat = 47.606209;        // Latitude in fractional degrees, default to Seattle
-double lng = -122.332069;      // Longitude in fractional degrees, default to Seattle
+double lat = 47.606209;     // Latitude in fractional degrees, default to Seattle
+double lng = -122.332069;   // Longitude in fractional degrees, default to Seattle
 
 // what's the name of the hardware serial port?
 #define GPSSerial Serial1
@@ -57,6 +59,7 @@ void setup() {
   pinMode(SHAMASHB, OUTPUT);
 
   pinMode(FIX_LED, OUTPUT);
+  digitalWrite(FIX_LED, LOW);
 
   // Pullup pin 8 to diable LoRa radio module.
   // Only needed if using the LoRa Feather M0
@@ -71,9 +74,13 @@ void setup() {
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ);  // 10 second update time
 
   // Set up the interrupt that lights the candles
-  TimerLib.setInterval_us(displayInterrupt, 1000);
+  //TimerLib.setInterval_us(displayInterrupt, 1365);
+  createInterrupt(displayInterrupt, 48e6 / 0xFFFF);  // Create interrupt at (48 MHz / 2^16) = 732.4 Hz
 
-  // Light all candles in turn
+  // Set the color of all the candles
+  colorAll(new Flicker());
+  setColor(8, new FlickerShamash());
+
   for (candlesOn = 255; candlesOn > 0; candlesOn = candlesOn >> 1) {
     delay(1000);
   }
@@ -81,14 +88,16 @@ void setup() {
   delay(1000);
   candlesOn = 0x55;
   delay(1000);
+  candlesOn = 0xFF;
+  for (char i = 0; i < 8; i++)
+    setColor(i, new Rainbow(i*45));
+  setColor(8, Color::WHITE());
+  delay(10000);
 }
 
 int prevDay = -1000;
 time_t statusTime = 0;
 void loop() {
-  // The main interrupt handler, runs fairly frequently to check if the day has changed
-  // or other reasons why the displayed candles should change
-
   // Check GPS for current time and location, and store it in global variables
   readGPS();
 
@@ -123,15 +132,12 @@ void loop() {
 }
 
 void displayInterrupt() {
-  if (shamashOn)
-    flickerShamash();
-  else
-    offShamash();
+  shamashOn ? onShamash() : offShamash();
 
   off();
   // Switch to the next candle (roll back to 0 if we pass 7)
   nextCandle();
-  candlesOn >> activeCandle & 1 ? flicker() : off();
+  candlesOn >> activeCandle & 1 ? on() : off();
 
   // Check for GPS signals frequently
   GPS.read();
@@ -248,56 +254,6 @@ void nextCandle() {
   setCandle(activeCandle);
 }
 
-void setColor(Color color) {
-  int r = color.r;
-  int g = color.g;
-  int b = color.b;
-  
-  if (r)
-    analogWrite(RED, r);
-  else {
-    pinMode(RED, OUTPUT);
-    digitalWrite(RED, LOW);
-  }
-
-  if (g)
-    analogWrite(GREEN, g);
-  else {
-    pinMode(GREEN, OUTPUT);
-    digitalWrite(GREEN, LOW);
-  }
-
-  if (b)
-    analogWrite(BLUE, b);
-  else {
-    pinMode(BLUE, OUTPUT);
-    digitalWrite(BLUE, LOW);
-  }
-}
-
-// Flicker the current candle
-// (i.e, probablistically set the candle to off or on [in a reddish-yellow color])
-void flicker() {
-  int h = randomRange(0, 60);  // Red is 0 and yellow is 60
-  int s = randomRange(220, 255);
-  int v = randomRange(128, 255);
-
-  setColor(Color::HSV(h, s, v));
-}
-
-void flickerShamash() {
-  int h = randomRange(0, 60);  // Red is 0 and yellow is 60
-  int s = randomRange(220, 255);
-  int v = randomRange(60, 90);
-
-  Color color = Color::HSV(h, s, v);
-
-  analogWrite(SHAMASHR, 255 - color.r);
-  analogWrite(SHAMASHG, 255 - color.g);
-  digitalWrite(SHAMASHB, color.b > random(255) ? LOW : HIGH); // The analog timer interferes with the interrupt timer on this pin
-
-}
-
 // Turn current candle off
 void off() {
   pinMode(RED, OUTPUT);
@@ -319,6 +275,48 @@ void offShamash() {
   digitalWrite(SHAMASHB, HIGH);
 }
 
-int randomRange(int a, int b) {
-  return random(b - a) + a;
+void on() {
+  Color* color = candleColors[activeCandle];
+  int r = color->red();
+  int g = color->green();
+  int b = color->blue();
+
+  if (r > 0) analogWrite(RED, r);
+  if (g > 0) analogWrite(GREEN, g);
+  if (b > 0) analogWrite(BLUE, b);
+}
+
+void onShamash() {
+  Color* color = candleColors[8];
+  int r = color->red();
+  int g = color->green();
+  int b = color->blue();
+
+  if (r > 0) {
+    analogWrite(SHAMASHR, 255 - r);
+  } else {
+    pinMode(SHAMASHR, OUTPUT);
+    digitalWrite(SHAMASHR, HIGH);
+  }
+  if (g > 0) {
+    analogWrite(SHAMASHG, 255 - g);
+  } else {
+    pinMode(SHAMASHG, OUTPUT);
+    digitalWrite(SHAMASHG, HIGH);
+  }
+  if (b > 0) {
+    analogWrite(SHAMASHB, 255 - b);
+  } else {
+    pinMode(SHAMASHB, OUTPUT);
+    digitalWrite(SHAMASHB, HIGH);
+  }
+}
+
+void setColor(int candle, Color* color) {
+  candleColors[candle] = color;
+}
+
+void colorAll(Color* c) {
+  for (int i = 0; i <= 8; i++)
+    setColor(i, c);
 }
