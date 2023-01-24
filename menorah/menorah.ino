@@ -1,5 +1,6 @@
 #include "interrupt.h"
 #include <Adafruit_GPS.h>
+#include <FlashStorage.h>
 #include "jdate.h"
 #include "color.h"
 
@@ -21,6 +22,9 @@ const int SHAMASHB = 10;
 
 // LED for showing fix
 #define FIX_LED 13
+
+// EEROM location data address
+const int EEPROM_ADDR = 100;
 
 // Define the bytes for if the candles and shamash should be turned on
 // These will be set during interrupts, so they are volatile
@@ -79,7 +83,7 @@ void setup() {
 
   // Set the color of all the candles
   colorAll(new Flicker());
-  setColor(8, new FlickerShamash());
+  setColor(8, new Flicker());
 
   for (candlesOn = 255; candlesOn > 0; candlesOn = candlesOn >> 1) {
     delay(1000);
@@ -89,10 +93,10 @@ void setup() {
   candlesOn = 0x55;
   delay(1000);
   candlesOn = 0xFF;
-  for (char i = 0; i < 8; i++)
-    setColor(i, new Rainbow(i*45));
-  setColor(8, Color::WHITE());
-  delay(10000);
+  for (char i = 0; i < 9; i++)
+    setColor(i, new Rainbow(i * 45));
+  //setColor(8, Color::WHITE());
+  delay(5000);
 }
 
 int prevDay = -1000;
@@ -137,7 +141,7 @@ void displayInterrupt() {
   off();
   // Switch to the next candle (roll back to 0 if we pass 7)
   nextCandle();
-  candlesOn >> activeCandle & 1 ? on() : off();
+  on();
 
   // Check for GPS signals frequently
   GPS.read();
@@ -281,16 +285,18 @@ void on() {
   int g = color->green();
   int b = color->blue();
 
-  if (r > 0) analogWrite(RED, r);
-  if (g > 0) analogWrite(GREEN, g);
-  if (b > 0) analogWrite(BLUE, b);
+  if (candlesOn >> activeCandle & 1) {
+    analogWrite(RED, r);
+    analogWrite(GREEN, g);
+    analogWrite(BLUE, b);
+  }
 }
 
 void onShamash() {
   Color* color = candleColors[8];
-  int r = color->red();
-  int g = color->green();
-  int b = color->blue();
+  int r = color->redShamash();
+  int g = color->greenShamash();
+  int b = color->blueShamash();
 
   if (r > 0) {
     analogWrite(SHAMASHR, 255 - r);
@@ -320,3 +326,30 @@ void colorAll(Color* c) {
   for (int i = 0; i <= 8; i++)
     setColor(i, c);
 }
+
+/*
+// Check EEPROM to see if the last known location is stored.
+void getStoredLocation() {
+  // Addr 0 is a flag to see if the stored location is valid
+  // Addr 1 is latitude
+  // Addr 2 is longitude
+  int addr = EEPROM_ADDR;
+  char validFlag = EEPROM.read(0);
+  addr += sizeof(validFlag);
+  if (validFlag == 1) {
+    lat = EEPROM.get(addr, lat);
+    addr += sizeof(lat);    
+    lng = EEPROM.get(addr, lng);
+  }
+}
+
+void storeLocation() {
+  int addr = EEPROM_ADDR;
+  EEPROM.update(addr++, 1);
+  // Round latitude and longitude to one decimal place (~7 miles) to prevent excessive EEPROM writes
+  float eeLat = round(lat * 10) / 10;
+  float eeLong = round(lng * 10) / 10;
+  EEPROM.put(addr, eeLat);
+  addr += sizeof(eeLat);    
+  EEPROM.put(addr, eeLong);
+}*/
