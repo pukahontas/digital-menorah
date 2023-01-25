@@ -23,9 +23,6 @@ const int SHAMASHB = 10;
 // LED for showing fix
 #define FIX_LED 13
 
-// EEROM location data address
-const int EEPROM_ADDR = 100;
-
 // Define the bytes for if the candles and shamash should be turned on
 // These will be set during interrupts, so they are volatile
 bool shamashOn = true;
@@ -37,8 +34,11 @@ volatile char activeCandle = 0;  // Index of active candle from 0 to 7
 // Set global variables for holding GPS data
 bool validTime = false;     // Has the GPS received a valid time solution yet?
 bool validLocation = true;  // Has the GPS computed a valid location yet?
-double lat = 47.606209;     // Latitude in fractional degrees, default to Seattle
-double lng = -122.332069;   // Longitude in fractional degrees, default to Seattle
+double lat, lng;            // Latitude in fractional degrees
+
+// Set up flash storage for persistent latitude and longitude
+FlashStorage(flashLat, float);
+FlashStorage(flashLong, float);
 
 // what's the name of the hardware serial port?
 #define GPSSerial Serial1
@@ -70,6 +70,8 @@ void setup() {
   pinMode(8, OUTPUT);
   digitalWrite(8, HIGH);
 
+  getStoredLocation();
+
   /*** Setup GPS Module ***/
   // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
   GPS.begin(9600);
@@ -78,24 +80,10 @@ void setup() {
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ);  // 10 second update time
 
   // Set up the interrupt that lights the candles
-  //TimerLib.setInterval_us(displayInterrupt, 1365);
   createInterrupt(displayInterrupt, 48e6 / 0xFFFF);  // Create interrupt at (48 MHz / 2^16) = 732.4 Hz
 
-  // Set the color of all the candles
-  colorAll(new Flicker());
-  setColor(8, new Flicker());
-
-  for (candlesOn = 255; candlesOn > 0; candlesOn = candlesOn >> 1) {
-    delay(1000);
-  }
-  candlesOn = 0xAA;
-  delay(1000);
-  candlesOn = 0x55;
-  delay(1000);
-  candlesOn = 0xFF;
   for (char i = 0; i < 9; i++)
     setColor(i, new Rainbow(i * 45));
-  //setColor(8, Color::WHITE());
   delay(5000);
 }
 
@@ -182,6 +170,7 @@ void readGPS() {
       lng = GPS.longitudeDegrees;
       validLocation = true;
       digitalWrite(FIX_LED, HIGH);
+      storeLocation();
       // Assume that once we have a single fix, that the location stays consistent during the duration.
       // We don't need to invalidate the solution if we ever lose the fix.
     }
@@ -327,29 +316,32 @@ void colorAll(Color* c) {
     setColor(i, c);
 }
 
-/*
 // Check EEPROM to see if the last known location is stored.
 void getStoredLocation() {
-  // Addr 0 is a flag to see if the stored location is valid
-  // Addr 1 is latitude
-  // Addr 2 is longitude
-  int addr = EEPROM_ADDR;
-  char validFlag = EEPROM.read(0);
-  addr += sizeof(validFlag);
-  if (validFlag == 1) {
-    lat = EEPROM.get(addr, lat);
-    addr += sizeof(lat);    
-    lng = EEPROM.get(addr, lng);
-  }
+  lat = flashLat.read();
+  lng = flashLong.read();
+  Serial.print("Read location from flash memory: ");
+  Serial.print(lat);
+  Serial.print(" lat, ");
+  Serial.print(lng);
+  Serial.println(" long.");
 }
 
 void storeLocation() {
-  int addr = EEPROM_ADDR;
-  EEPROM.update(addr++, 1);
-  // Round latitude and longitude to one decimal place (~7 miles) to prevent excessive EEPROM writes
-  float eeLat = round(lat * 10) / 10;
-  float eeLong = round(lng * 10) / 10;
-  EEPROM.put(addr, eeLat);
-  addr += sizeof(eeLat);    
-  EEPROM.put(addr, eeLong);
-}*/
+  float readLat = flashLat.read();
+  float readLong = flashLong.read();
+
+  // To prevent excessive writes from wearing out flash memory, only write if the GPS has a fix
+  // and if the location changes by more than 1 degree
+  if (GPS.fix) {
+    if (abs(readLat - lat) > 1 || abs(readLong - lng) > 1) {
+      flashLat.write(lat);
+      flashLong.write(lng);
+      Serial.print("Wrote location to flash memory: ");
+      Serial.print(lat);
+      Serial.print(" lat, ");
+      Serial.print(lng);
+      Serial.println(" long.");
+    }
+  }
+}
