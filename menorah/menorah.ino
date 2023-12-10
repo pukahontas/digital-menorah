@@ -97,23 +97,31 @@ void loop() {
     return;
 
   int nthDay = dayOfHanukkah(lat, lng);
+  bool isPassover = false;
   if (nthDay < 0) {
     candlesOn = -nthDay;
     shamashOn = -nthDay > 0xFF;
   } else if (nthDay <= 7) {
     candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
     shamashOn = true;
+    isPassover = true;
   } else {
     candlesOn = 0;
   }
 
-  // On a new day, say a little prayer
+  // On a new day, say a little prayer and set the colors correctly
   if (nthDay != prevDay) {
     prevDay = nthDay;
     Serial.println("Barukh atah Adonai");
     Serial.println("Eloheinu melekh ha'olam");
     Serial.println("asher kid'shanu b'mitzvotav");
     Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
+
+    for (char i = 0; i < 9; i++)
+      if (isPassover)
+        setColor(i, new Flicker()); // if it's passover set all the candles to flame color
+      else
+        setColor(i, new Rainbow(i * 45)); // Otherwise set them to rainbow ride
   }
 
   // Display status every once in a while
