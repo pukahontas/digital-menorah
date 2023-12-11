@@ -86,7 +86,7 @@ HebrewDate currentHebrewDate(double lat, double lng) {
   return HebrewDate(GregorianDate(month(), day(), year()) + dayOffset) + (isNight(lat, lng) && localDayFrac > .5);
 }
 
-int dayofHoliday(HebrewDate hDate, int month, int day, int holidayLength) {
+int dayOfHoliday(HebrewDate hDate, int month, int day, int holidayLength) {
   int nthDay = hDate - HebrewDate(month, day, hDate.GetYear());
   if (nthDay > holidayLength)
     nthDay = hDate - HebrewDate(month, day, hDate.GetYear() + 1);
@@ -94,11 +94,11 @@ int dayofHoliday(HebrewDate hDate, int month, int day, int holidayLength) {
 }
 
 int dayOfHanukkah (HebrewDate hDate) {
-  return dayofHoliday(hDate, KISLEV, 25, 8);
+  return dayOfHoliday(hDate, KISLEV, 25, 8);
 }
 
 int dayOfPassover(HebrewDate hDate) {
-  return dayofHoliday(hDate, NISAN, 15, 8);
+  return dayOfHoliday(hDate, NISAN, 15, 8);
 }
 
 String displayHebrewDate (HebrewDate hDate) {

@@ -101,18 +101,10 @@ void loop() {
   HebrewDate hebrewDate = currentHebrewDate(lat, lng);
   int nthDay = dayOfHanukkah(hebrewDate);
   int nthDayPassover = dayOfPassover(hebrewDate);
-
-  if (nthDay < 0) {
-    candlesOn = -nthDay;
-    shamashOn = -nthDay > 0xFF;
-  } else if (nthDay <= 7) {
-    candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
-    shamashOn = true;
-  } else if (nthDayPassover >=0) {
-    candlesOn = (1 << nthDayPassover + 1) - 1;  // Set the first [nthDay + 1] candles on
-  } else {
-    candlesOn = 0;
-  }
+  int isYomKippur = dayOfHoliday(hebrewDate, TISHREI, 10, 1);
+  int isRoshHashana = dayOfHoliday(hebrewDate, TISHREI, 1, 2);
+  int isPurim = dayOfHoliday(hebrewDate, ADAR, 14, 1);
+  int isSukkot = dayOfHoliday(hebrewDate, TISHREI, 15, 7);
 
   // On a new day, say a little prayer and set the colors correctly
   if (nthDay != prevDay) {
@@ -124,11 +116,40 @@ void loop() {
 
     for (char i = 0; i < 9; i++) {
       if (nthDay < 8) {
-        setColor(i, new Flame()); // if it's passover set all the candles to flame color
+        candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
+        shamashOn = true;
+        setColor(i, new Flame()); // if it's Hanukkah set all the candles to flame color
       } else if (nthDayPassover >=0) {
+        candlesOn = (1 << nthDayPassover + 1) - 1;  // Set the first [nthDay + 1] candles on
+        shamashOn = false;
         setColor(i, i & 1 ? Color::WHITE() : Color::BLUE());
-      } else {
+        Serial.print("It's day "); Serial.print(nthDayPassover + 1); Serial.println(" of Passover");
+      } else if (isYomKippur >= 0) {
+        candlesOn = 0xFF;
+        shamashOn = false;
+        setColor(i, i & 1 ? Color::WHITE() : Color::RED());
+        Serial.println("Have a solemn Yom Kippur (Tishrei 10)");
+      } else if (isRoshHashana >= 0) {
+        candlesOn = 0xFF;
+        shamashOn = false;
+        setColor(i, i & 1 ? Color::RED() : Color::HSV(30, 255, 255)); // Orange and red
+        Serial.println("It's Rosh Hashana. Happy new year! (Tishrei 1)");
+      } else if (isPurim >= 0) {
+        candlesOn = 0xFF;
+        shamashOn = false;
+        setColor(i, i & 1 ? Color::MAGENTA() : Color::YELLOW());
+        Serial.println("It's Purim, drink up! (Adar 14)");
+      } else if (isSukkot >= 0) {
+        candlesOn = (1 << isSukkot + 1) - 1;
+        shamashOn = false;
+        setColor(i, i & 1 ? Color::CYAN() : Color::GREEN());
+        Serial.println("It's Sukkot (Tishrei 15-21)");
+      } else if (nthDay < 0) { // No current holiday, display the number of days until Hanukkah
+        candlesOn = -nthDay;
+        shamashOn = -nthDay > 0xFF;
         setColor(i, new Rainbow(i * 45)); // Otherwise set them to rainbow ride
+      } else {
+        candlesOn = 0;
       }
     }
   }
