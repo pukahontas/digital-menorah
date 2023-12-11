@@ -84,11 +84,13 @@ void setup() {
 
   for (char i = 0; i < 9; i++)
     setColor(i, new Rainbow(i * 45));
+
   delay(5000);
 }
 
 int prevDay = -1000;
 time_t statusTime = 0;
+
 void loop() {
   // Check GPS for current time and location, and store it in global variables
   readGPS();
@@ -96,15 +98,18 @@ void loop() {
   if (!validTime || !validLocation)
     return;
 
-  int nthDay = dayOfHanukkah(lat, lng);
-  bool isPassover = false;
+  HebrewDate hebrewDate = currentHebrewDate(lat, lng);
+  int nthDay = dayOfHanukkah(hebrewDate);
+  int nthDayPassover = dayOfPassover(hebrewDate);
+
   if (nthDay < 0) {
     candlesOn = -nthDay;
     shamashOn = -nthDay > 0xFF;
   } else if (nthDay <= 7) {
     candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
     shamashOn = true;
-    isPassover = true;
+  } else if (nthDayPassover >=0) {
+    candlesOn = (1 << nthDayPassover + 1) - 1;  // Set the first [nthDay + 1] candles on
   } else {
     candlesOn = 0;
   }
@@ -117,16 +122,20 @@ void loop() {
     Serial.println("asher kid'shanu b'mitzvotav");
     Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
 
-    for (char i = 0; i < 9; i++)
-      if (isPassover)
-        setColor(i, new Flicker()); // if it's passover set all the candles to flame color
-      else
+    for (char i = 0; i < 9; i++) {
+      if (nthDay < 8) {
+        setColor(i, new Flame()); // if it's passover set all the candles to flame color
+      } else if (nthDayPassover >=0) {
+        setColor(i, i & 1 ? Color::WHITE() : Color::BLUE());
+      } else {
         setColor(i, new Rainbow(i * 45)); // Otherwise set them to rainbow ride
+      }
+    }
   }
 
   // Display status every once in a while
   if (now() - statusTime > 5) {
-    displayStatus();
+    displayStatus(hebrewDate);
     statusTime = now();
   }
 }
@@ -185,7 +194,7 @@ void readGPS() {
   }
 }
 
-void displayStatus() {
+void displayStatus(HebrewDate hebrewDate) {
   Serial.println();
   Serial.print("System time: ");
   Serial.print(padDigits(hour()));
@@ -233,9 +242,9 @@ void displayStatus() {
   Serial.print(":");
   Serial.println((sunrise - floor(sunrise)) * 60, 0);
   Serial.print("Current Hebrew date: ");
-  Serial.println(displayHebrewDate(currentHebrewDate(lat, lng)));
+  Serial.println(displayHebrewDate(hebrewDate));
   Serial.print("Day of Hanukkah: ");
-  Serial.println(dayOfHanukkah(lat, lng));
+  Serial.println(dayOfHanukkah(hebrewDate));
 }
 
 String padDigits(int value) {

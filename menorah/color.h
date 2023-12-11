@@ -113,9 +113,9 @@ public:
   }
 };
 
-class Flicker : public Color {
+class Flame : public Color {
 public:
-  Flicker() {
+  Flame () {
     setHSV(30, 245, 75);
   }
 
