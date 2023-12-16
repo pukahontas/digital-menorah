@@ -115,7 +115,7 @@ void loop() {
     Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
 
     for (char i = 0; i < 9; i++) {
-      if (nthDay < 8) {
+      if (nthDay >= 0) {
         candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
         shamashOn = true;
         setColor(i, new Flame()); // if it's Hanukkah set all the candles to flame color
@@ -148,6 +148,7 @@ void loop() {
         candlesOn = -nthDay;
         shamashOn = -nthDay > 0xFF;
         setColor(i, new Rainbow(i * 45)); // Otherwise set them to rainbow ride
+        Serial.print(candlesOn); Serial.println(" days until Hanukkah");
       } else {
         candlesOn = 0;
       }

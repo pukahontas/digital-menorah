@@ -88,7 +88,7 @@ HebrewDate currentHebrewDate(double lat, double lng) {
 
 int dayOfHoliday(HebrewDate hDate, int month, int day, int holidayLength) {
   int nthDay = hDate - HebrewDate(month, day, hDate.GetYear());
-  if (nthDay > holidayLength)
+  if (nthDay >= holidayLength)
     nthDay = hDate - HebrewDate(month, day, hDate.GetYear() + 1);
   return nthDay;
 }
