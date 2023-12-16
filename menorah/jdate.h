@@ -87,6 +87,11 @@ HebrewDate currentHebrewDate(double lat, double lng) {
 }
 
 int dayOfHoliday(HebrewDate hDate, int month, int day, int holidayLength) {
+  // Return the ordinal day of a Jewish holiday. The ordinal is zero-based, so 0 represents the first day and 7 is the eigth.
+  // If it is not in the holiday, the value is negative and represents the days until the next holiday
+  // hDate: The day to get the info on (typically the current day)
+  // month, day: The hebrew month and day of the start of the holiday.
+  // holidayLength: number of days the holiday lasts for
   int nthDay = hDate - HebrewDate(month, day, hDate.GetYear());
   if (nthDay >= holidayLength)
     nthDay = hDate - HebrewDate(month, day, hDate.GetYear() + 1);
