@@ -65,7 +65,7 @@ void setup() {
   pinMode(FIX_LED, OUTPUT);
   digitalWrite(FIX_LED, LOW);
 
-  // Pullup pin 8 to diable LoRa radio module.
+  // Pullup pin 8 to disable LoRa radio module.
   // Only needed if using the LoRa Feather M0
   pinMode(8, OUTPUT);
   digitalWrite(8, HIGH);
@@ -82,8 +82,19 @@ void setup() {
   // Set up the interrupt that lights the candles
   createInterrupt(displayInterrupt, 48e6 / 0xFFFF);  // Create interrupt at (48 MHz / 2^16) = 732.4 Hz
 
-  for (char i = 0; i < 9; i++)
-    setColor(i, new Rainbow(i * 45));
+  fillColor(Color::WHITE());
+
+  shamashOn = false;
+  candlesOn = 0b10000001;
+  delay(1000);
+  candlesOn = 0b01000010;
+  delay(1000);
+  candlesOn = 0b00100100;
+  delay(1000);
+  candlesOn = 0b00011000;
+  delay(1000);
+  candlesOn = 0;
+  shamashOn = true;
 
   delay(5000);
 }
@@ -103,7 +114,7 @@ void loop() {
   int nthDayPassover = dayOfPassover(hebrewDate);
   int isYomKippur = dayOfHoliday(hebrewDate, TISHREI, 10, 1);
   int isRoshHashana = dayOfHoliday(hebrewDate, TISHREI, 1, 2);
-  int isPurim = dayOfHoliday(hebrewDate, ADAR, 14, 1);
+  int isPurim = dayOfHoliday(hebrewDate, LastMonthOfHebrewYear(hebrewDate.GetYear()), 14, 1);
   int isSukkot = dayOfHoliday(hebrewDate, TISHREI, 15, 7);
 
   // On a new day, say a little prayer and set the colors correctly
@@ -114,44 +125,47 @@ void loop() {
     Serial.println("asher kid'shanu b'mitzvotav");
     Serial.println("v'tzivanu l'hadlik ner shel hanukkah");
 
-    for (char i = 0; i < 9; i++) {
-      if (nthDay >= 0) {
-        candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
-        shamashOn = true;
-        setColor(i, new Flame()); // if it's Hanukkah set all the candles to flame color
-      } else if (nthDayPassover >=0) {
-        candlesOn = (1 << nthDayPassover + 1) - 1;  // Set the first [nthDay + 1] candles on
-        shamashOn = false;
-        setColor(i, i & 1 ? Color::WHITE() : Color::BLUE());
-        Serial.print("It's day "); Serial.print(nthDayPassover + 1); Serial.println(" of Passover");
-      } else if (isYomKippur >= 0) {
-        candlesOn = 0xFF;
-        shamashOn = false;
-        setColor(i, i & 1 ? Color::WHITE() : Color::RED());
-        Serial.println("Have a solemn Yom Kippur (Tishrei 10)");
-      } else if (isRoshHashana >= 0) {
-        candlesOn = 0xFF;
-        shamashOn = false;
-        setColor(i, i & 1 ? Color::RED() : Color::HSV(30, 255, 255)); // Orange and red
-        Serial.println("It's Rosh Hashana. Happy new year! (Tishrei 1)");
-      } else if (isPurim >= 0) {
-        candlesOn = 0xFF;
-        shamashOn = false;
-        setColor(i, i & 1 ? Color::MAGENTA() : Color::YELLOW());
-        Serial.println("It's Purim, drink up! (Adar 14)");
-      } else if (isSukkot >= 0) {
-        candlesOn = (1 << isSukkot + 1) - 1;
-        shamashOn = false;
-        setColor(i, i & 1 ? Color::CYAN() : Color::GREEN());
-        Serial.println("It's Sukkot (Tishrei 15-21)");
-      } else if (nthDay < 0) { // No current holiday, display the number of days until Hanukkah
-        candlesOn = -nthDay;
-        shamashOn = -nthDay > 0xFF;
-        setColor(i, new Rainbow(i * 45)); // Otherwise set them to rainbow ride
-        Serial.print(candlesOn); Serial.println(" days until Hanukkah");
-      } else {
-        candlesOn = 0;
-      }
+    if (nthDay >= 0) {
+      candlesOn = (1 << nthDay + 1) - 1;  // Set the first [nthDay + 1] candles on
+      shamashOn = true;
+      fillColor(new Flame());  // if it's Hanukkah set all the candles to flame color
+    } else if (nthDayPassover >= 0) {
+      candlesOn = (1 << nthDayPassover + 1) - 1;  // Set the first [nthDay + 1] candles on
+      shamashOn = false;
+      fillColor(Color::BLUE(), Color::WHITE());
+      Serial.print("It's day ");
+      Serial.print(nthDayPassover + 1);
+      Serial.println(" of Passover");
+    } else if (isYomKippur >= 0) {
+      candlesOn = 0xFF;
+      shamashOn = false;
+      fillColor(Color::WHITE(), Color::RED());
+      Serial.println("Have a solemn Yom Kippur (Tishrei 10)");
+    } else if (isRoshHashana >= 0) {
+      candlesOn = 0xFF;
+      shamashOn = false;
+      fillColor(Color::RED(), Color::HSV(30, 255, 255));  // Orange and red
+      Serial.println("It's Rosh Hashana. Happy new year! (Tishrei 1)");
+    } else if (isPurim >= 0) {
+      candlesOn = 0xFF;
+      shamashOn = false;
+      fillColor(Color::MAGENTA(), Color::YELLOW());
+      Serial.println("It's Purim, drink up! (Adar 14)");
+    } else if (isSukkot >= 0) {
+      candlesOn = (1 << isSukkot + 1) - 1;
+      shamashOn = false;
+      fillColor(Color::GREEN(), Color::CYAN());
+      Serial.println("It's Sukkot (Tishrei 15-21)");
+    } else if (nthDay < 0) {  // No current holiday, display the number of days until Hanukkah
+      candlesOn = -nthDay;
+      shamashOn = -nthDay > 0xFF;
+      for (int i = 0; i < 8; i++)
+        setColor(i, new Rainbow(i * 45));  // Otherwise set them to rainbow ride
+      Serial.print(-nthDay);
+      Serial.println(" days until Hanukkah");
+    } else {
+      candlesOn = 0;
+      Serial.println("Something went wrong.");
     }
   }
 
@@ -167,7 +181,11 @@ void displayInterrupt() {
 
   off();
   // Switch to the next candle (roll back to 0 if we pass 7)
-  nextCandle();
+  activeCandle++;
+  activeCandle &= 7;
+  digitalWrite(S1, activeCandle & 1 ? HIGH : LOW);
+  digitalWrite(S2, activeCandle & 2 ? HIGH : LOW);
+  digitalWrite(S3, activeCandle & 4 ? HIGH : LOW);
   on();
 
   // Check for GPS signals frequently
@@ -198,11 +216,11 @@ void readGPS() {
     Serial.print("/");
     Serial.print(GPS.year + 2000);
     Serial.print(" ");
-    Serial.print(padDigits(GPS.hour));
+    Serial.print(padDigits(GPS.hour, 2, 0));
     Serial.print(":");
-    Serial.print(padDigits(GPS.minute));
+    Serial.print(padDigits(GPS.minute, 2, 0));
     Serial.print(":");
-    Serial.println(s);
+    Serial.println(padDigits(s, 2, 2));
 
     if (GPS.fix) {
       lat = GPS.latitudeDegrees;
@@ -219,11 +237,11 @@ void readGPS() {
 void displayStatus(HebrewDate hebrewDate) {
   Serial.println();
   Serial.print("System time: ");
-  Serial.print(padDigits(hour()));
+  Serial.print(padDigits(hour(), 2, 0));
   Serial.print(":");
-  Serial.print(padDigits(minute()));
+  Serial.print(padDigits(minute(), 2, 0));
   Serial.print(":");
-  Serial.print(padDigits(second()));
+  Serial.print(padDigits(second(), 2, 0));
   Serial.print(" ");
   Serial.print(day());
   Serial.print("/");
@@ -252,38 +270,31 @@ void displayStatus(HebrewDate hebrewDate) {
   double sunrise, sunset;
   isNight(lat, lng, sunrise, sunset);
   Serial.print("Sunset at ");
-  Serial.print((int)(sunset / 60.));
+  Serial.print(padDigits(sunset / 60., 2, 0));
   Serial.print(":");
-  Serial.print((int)sunset % 60);
+  Serial.print(padDigits((int)sunset % 60, 2, 0));
   Serial.print(":");
-  Serial.print((sunset - floor(sunset)) * 60, 0);
+  Serial.print(padDigits((sunset - floor(sunset)) * 60, 2, 0));
   Serial.print(", Sunrise at ");
-  Serial.print((int)(sunrise / 60.));
+  Serial.print(padDigits(sunrise / 60., 2, 0));
   Serial.print(":");
-  Serial.print((int)sunrise % 60);
+  Serial.print(padDigits((int)sunrise % 60, 2, 0));
   Serial.print(":");
-  Serial.println((sunrise - floor(sunrise)) * 60, 0);
+  Serial.println(padDigits((sunrise - floor(sunrise)) * 60, 2, 0));
   Serial.print("Current Hebrew date: ");
   Serial.println(displayHebrewDate(hebrewDate));
   Serial.print("Day of Hanukkah: ");
   Serial.println(dayOfHanukkah(hebrewDate));
 }
 
-String padDigits(int value) {
-  return String(value < 0 ? "-" : "") + String(abs(value) <= 9 ? "0" : "") + String(abs(value));
-}
+String padDigits(float value, int padIntegral, int decimalDigits) {
+  int integral = (int)abs(value); // Integral part of the value
+  int frac = (int)((abs(value) - integral) * pow(10, decimalDigits)); // Fractional part, rounded to decimalDigits places
+  String whole = String(integral);
+  while (whole.length() < padIntegral)
+    whole = " " + whole;
 
-// Select the current "candle" to change the color of.
-void setCandle(int c) {
-  digitalWrite(S1, c & 1 ? HIGH : LOW);
-  digitalWrite(S2, c & 2 ? HIGH : LOW);
-  digitalWrite(S3, c & 4 ? HIGH : LOW);
-}
-
-void nextCandle() {
-  activeCandle++;
-  activeCandle &= 7;
-  setCandle(activeCandle);
+  return String(value < 0 ? "-" : "") + whole + (frac > 0 ? String(".") + String(frac) : "");
 }
 
 // Turn current candle off
@@ -308,12 +319,12 @@ void offShamash() {
 }
 
 void on() {
-  Color* color = candleColors[activeCandle];
-  int r = color->red();
-  int g = color->green();
-  int b = color->blue();
-
   if (candlesOn >> activeCandle & 1) {
+    Color* color = candleColors[activeCandle];
+    int r = color->red();
+    int g = color->green();
+    int b = color->blue();
+
     analogWrite(RED, r);
     analogWrite(GREEN, g);
     analogWrite(BLUE, b);
@@ -350,9 +361,43 @@ void setColor(int candle, Color* color) {
   candleColors[candle] = color;
 }
 
-void colorAll(Color* c) {
-  for (int i = 0; i <= 8; i++)
-    setColor(i, c);
+// Set the candles with color
+void fillColor(Color* a, Color* b, Color* c, Color* d, Color* e, Color* f, Color* g, Color* h, Color* i) {
+  setColor(0, a);
+  setColor(1, b);
+  setColor(2, c);
+  setColor(3, d);
+  setColor(4, e);
+  setColor(5, f);
+  setColor(6, g);
+  setColor(7, h);
+  setColor(8, i);
+}
+
+// Add overloaded methods to fill with repeating colors
+void fillColor(Color* a) {
+  fillColor(a, a, a, a, a, a, a, a, a);
+}
+void fillColor(Color* a, Color* b) {
+  fillColor(a, b, a, b, a, b, a, b, a);
+}
+void fillColor(Color* a, Color* b, Color* c) {
+  fillColor(a, b, c, a, b, c, a, b, c);
+}
+void fillColor(Color* a, Color* b, Color* c, Color* d) {
+  fillColor(a, b, c, d, a, b, c, d, a);
+}
+void fillColor(Color* a, Color* b, Color* c, Color* d, Color* e) {
+  fillColor(a, b, c, d, e, a, b, c, d);
+}
+void fillColor(Color* a, Color* b, Color* c, Color* d, Color* e, Color* f) {
+  fillColor(a, b, c, d, e, f, a, b, c);
+}
+void fillColor(Color* a, Color* b, Color* c, Color* d, Color* e, Color* f, Color* g) {
+  fillColor(a, b, c, d, e, f, g, a, b);
+}
+void fillColor(Color* a, Color* b, Color* c, Color* d, Color* e, Color* f, Color* g, Color* h) {
+  fillColor(a, b, c, d, e, f, g, h, a);
 }
 
 // Check EEPROM to see if the last known location is stored.

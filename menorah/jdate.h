@@ -14,7 +14,8 @@
 #define KISLEV    9
 #define TEVET    10
 #define SHEVAT   11
-#define ADAR     12
+#define ADAR1    12
+#define ADAR2    13
 
 const double HORIZON_ANGLE = 90.833; //The angle of the sun from the zenith when the sun is said to have set or risen, in degrees
 
